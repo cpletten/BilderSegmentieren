@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PiCar Labeling</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:       #0e0f11;
+    --surface:  #16181c;
+    --border:   #2a2d35;
+    --accent:   #00e5a0;
+    --danger:   #ff4757;
+    --warn:     #ffa502;
+    --muted:    #5a5f6e;
+    --text:     #e8eaf0;
+    --boden:    #00e5a0;
+    --kein:     #ff4757;
+    --unsicher: #3a3d47;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 14px 20px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+  }
+  header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.95rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .pill {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    background: var(--border);
+    color: var(--muted);
+    padding: 2px 8px;
+    border-radius: 99px;
+  }
+
+  /* ── Tabs ── */
+  nav {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  nav button {
+    flex: 1;
+    padding: 12px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  nav button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── Tab-Inhalte ── */
+  .tab { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .tab.active { display: flex; }
+
+  /* ── Kamera-Tab ── */
+  #camWrap {
+    position: relative;
+    flex: 1;
+    background: #000;
+    overflow: hidden;
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  #camGrid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .cam-bar {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #snapBtn {
+    flex: 1;
+    padding: 14px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s;
+    letter-spacing: 0.05em;
+  }
+  #snapBtn:active { transform: scale(0.96); opacity: 0.85; }
+  .cam-count {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #dlCamBtn {
+    padding: 14px 16px;
+    background: var(--border);
+    color: var(--text);
+    border: none;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  /* ── Label-Tab ── */
+  #labelWrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #imgContainer {
+    position: relative;
+    flex: 1;
+    background: #000;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #labelImg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  #labelCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+  }
+  .label-bar {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .label-stats {
+    display: flex;
+    gap: 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+  }
+  .stat-b { color: var(--boden); }
+  .stat-k { color: var(--kein); }
+  .stat-u { color: var(--muted); }
+  .label-btns {
+    display: flex;
+    gap: 8px;
+  }
+  .label-btns button {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s;
+    letter-spacing: 0.04em;
+  }
+  .label-btns button:active { transform: scale(0.96); opacity: 0.8; }
+  #saveBtn  { background: var(--accent); color: #000; }
+  #skipBtn  { background: var(--border); color: var(--muted); }
+  #dlLabelBtn { background: var(--warn); color: #000; }
+
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.3s;
+  }
+
+  /* ── Leerer Zustand ── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 40px;
+    text-align: center;
+  }
+  .empty-state .icon { font-size: 2.5rem; }
+
+  /* Upload-Button im Label-Tab */
+  #uploadBtn {
+    padding: 14px 24px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  #fileInput { display: none; }
+
+  /* Flash-Effekt beim Foto */
+  #flash {
+    position: fixed;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+    transition: opacity 0.05s;
+  }
+  #flash.go { opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<div id="flash"></div>
+
+<header>
+  <h1>PICAR LABEL</h1>
+  <span class="pill">v1.0</span>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('cam')">📷 Aufnahme</button>
+  <button onclick="switchTab('label')">🏷️ Labeling</button>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 1: KAMERA
+══════════════════════════════════════════════════════════ -->
+<div id="tab-cam" class="tab active">
+  <div id="camWrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="camGrid"></canvas>
+  </div>
+  <div class="cam-bar">
+    <button id="snapBtn" onclick="snap()">FOTO</button>
+    <span class="cam-count" id="camCount">0 Bilder</span>
+    <button id="dlCamBtn" onclick="downloadRaw()">⬇ ZIP</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 2: LABELING
+══════════════════════════════════════════════════════════ -->
+<div id="tab-label" class="tab">
+  <div id="labelWrap" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+    <div id="imgContainer">
+      <img id="labelImg" src="" alt="">
+      <canvas id="labelCanvas"></canvas>
+    </div>
+    <div class="label-bar">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="label-stats">
+        <span id="imgProgress" style="color:var(--muted); font-size:0.7rem;"></span>
+        <span class="stat-b" id="statB">B: 0</span>
+        <span class="stat-k" id="statK">K: 0</span>
+        <span class="stat-u" id="statU">?: 0</span>
+        <span style="color:var(--muted); margin-left:auto;" id="totalPatches"></span>
+      </div>
+      <div class="label-btns">
+        <button id="saveBtn"    onclick="saveCurrent()">✓ SPEICHERN</button>
+        <button id="skipBtn"    onclick="skipCurrent()">↷ SKIP</button>
+        <button id="dlLabelBtn" onclick="downloadPatches()">⬇ PATCHES</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <div class="icon">🖼️</div>
+    <div>Bilder aus dem Aufnahme-Tab<br>oder vom Gerät laden</div>
+    <button id="uploadBtn" onclick="document.getElementById('fileInput').click()">
+      BILDER LADEN
+    </button>
+    <input type="file" id="fileInput" accept="image/*" multiple onchange="loadFiles(this.files)">
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// GLOBALER ZUSTAND
+// ════════════════════════════════════════════════════════════
+
+const GRID_COLS  = 6;
+const GRID_ROWS  = 4;
+const PATCH_SIZE = 32;
+
+// Rohe aufgenommene Bilder (dataURL)
+let rawImages = [];   // [{name, dataURL}]
+
+// Für Labeling
+let labelImages = []; // [{name, dataURL}]
+let labelIdx    = 0;
+let grid        = []; // [row][col] = 'B' | 'K' | '?'
+
+// Gespeicherte Patches
+let patches = { boden: [], kein_boden: [] }; // [{name, blob}]
+
+// ════════════════════════════════════════════════════════════
+// TABS
+// ════════════════════════════════════════════════════════════
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+
+  if (name === 'label') syncLabelImages();
+}
+
+// ════════════════════════════════════════════════════════════
+// TAB 1: KAMERA
+// ════════════════════════════════════════════════════════════
+
+const video   = document.getElementById('video');
+const camGrid = document.getElementById('camGrid');
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    video.addEventListener('loadedmetadata', drawCamGrid);
+    window.addEventListener('resize', drawCamGrid);
+  } catch (e) {
+    alert('Kamera nicht verfügbar: ' + e.message);
+  }
+}
+
+function drawCamGrid() {
+  const w = video.videoWidth  || video.offsetWidth;
+  const h = video.videoHeight || video.offsetHeight;
+  camGrid.width  = camGrid.offsetWidth;
+  camGrid.height = camGrid.offsetHeight;
+  const ctx = camGrid.getContext('2d');
+  ctx.clearRect(0, 0, camGrid.width, camGrid.height);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  for (let c = 1; c < GRID_COLS; c++) {
+    const x = c * camGrid.width / GRID_COLS;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, camGrid.height); ctx.stroke();
+  }
+  for (let r = 1; r < GRID_ROWS; r++) {
+    const y = r * camGrid.height / GRID_ROWS;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(camGrid.width, y); ctx.stroke();
+  }
+}
+
+function snap() {
+  // Flash
+  const fl = document.getElementById('flash');
+  fl.classList.add('go');
+  setTimeout(() => fl.classList.remove('go'), 150);
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const ts   = new Date().toISOString().replace(/[:.]/g,'-');
+  const name = `img_${ts}.jpg`;
+  const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+  rawImages.push({ name, dataURL });
+  document.getElementById('camCount').textContent = rawImages.length + ' Bilder';
+}
+
+async function downloadRaw() {
+  if (!rawImages.length) { alert('Noch keine Bilder aufgenommen.'); return; }
+  const zip = new JSZip();
+  const folder = zip.folder('raw_images');
+  rawImages.forEach(img => {
+    const b64 = img.dataURL.split(',')[1];
+    folder.file(img.name, b64, { base64: true });
+  });
+  const blob = await zip.generateAsync({ type: 'blob' });
+  triggerDownload(blob, 'raw_images.zip');
+}
+
+// ════════════════════════════════════════════════════════════
+// TAB 2: LABELING
+// ════════════════════════════════════════════════════════════
+
+function syncLabelImages() {
+  // Kamera-Bilder die noch nicht im Label-Pool sind, hinzufügen
+  rawImages.forEach(img => {
+    if (!labelImages.find(l => l.name === img.name)) {
+      labelImages.push(img);
+    }
+  });
+  if (labelImages.length > 0) showLabelUI();
+}
+
+function loadFiles(files) {
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      labelImages.push({ name: file.name, dataURL: e.target.result });
+      showLabelUI();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function showLabelUI() {
+  document.getElementById('emptyState').style.display = 'none';
+  const wrap = document.getElementById('labelWrap');
+  wrap.style.display = 'flex';
+  if (labelIdx >= labelImages.length) labelIdx = labelImages.length - 1;
+  loadLabelImage(labelIdx);
+}
+
+function makeGrid() {
+  return Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill('?'));
+}
+
+const labelImg    = document.getElementById('labelImg');
+const labelCanvas = document.getElementById('labelCanvas');
+const lctx        = labelCanvas.getContext('2d');
+
+function loadLabelImage(idx) {
+  if (idx >= labelImages.length) { finishedLabeling(); return; }
+  labelIdx = idx;
+  grid = makeGrid();
+  labelImg.src = labelImages[idx].dataURL;
+  labelImg.onload = () => {
+    resizeCanvas();
+    drawGrid();
+    updateStats();
+  };
+  updateProgress();
+}
+
+function resizeCanvas() {
+  const cont = document.getElementById('imgContainer');
+  labelCanvas.width  = cont.offsetWidth;
+  labelCanvas.height = cont.offsetHeight;
+}
+
+function cellSize() {
+  return {
+    cw: labelCanvas.width  / GRID_COLS,
+    ch: labelCanvas.height / GRID_ROWS
+  };
+}
+
+function drawGrid() {
+  const { cw, ch } = cellSize();
+  lctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const lbl = grid[r][c];
+      const x = c * cw, y = r * ch;
+
+      // Farbige Überlagerung
+      lctx.fillStyle = lbl === 'B' ? 'rgba(0,229,160,0.35)'
+                     : lbl === 'K' ? 'rgba(255,71,87,0.35)'
+                     :               'rgba(0,0,0,0.0)';
+      lctx.fillRect(x, y, cw, ch);
+
+      // Label-Text
+      lctx.font = `bold ${Math.min(cw, ch) * 0.45}px Space Mono, monospace`;
+      lctx.textAlign = 'center';
+      lctx.textBaseline = 'middle';
+      lctx.fillStyle = lbl === 'B' ? '#00e5a0'
+                     : lbl === 'K' ? '#ff4757'
+                     :               'rgba(255,255,255,0.2)';
+      lctx.fillText(lbl, x + cw / 2, y + ch / 2);
+    }
+  }
+
+  // Gitterlinien
+  lctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  lctx.lineWidth = 1;
+  for (let c = 1; c < GRID_COLS; c++) {
+    lctx.beginPath();
+    lctx.moveTo(c * cw, 0); lctx.lineTo(c * cw, labelCanvas.height);
+    lctx.stroke();
+  }
+  for (let r = 1; r < GRID_ROWS; r++) {
+    lctx.beginPath();
+    lctx.moveTo(0, r * ch); lctx.lineTo(labelCanvas.width, r * ch);
+    lctx.stroke();
+  }
+}
+
+// Touch / Klick auf Canvas
+labelCanvas.addEventListener('click', e => {
+  const rect = labelCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const { cw, ch } = cellSize();
+  const c = Math.min(Math.floor(x / cw), GRID_COLS - 1);
+  const r = Math.min(Math.floor(y / ch), GRID_ROWS - 1);
+  const cycle = ['?', 'B', 'K'];
+  const cur = grid[r][c];
+  grid[r][c] = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
+  drawGrid();
+  updateStats();
+});
+
+function updateStats() {
+  let b = 0, k = 0, u = 0;
+  grid.forEach(row => row.forEach(lbl => {
+    if (lbl === 'B') b++;
+    else if (lbl === 'K') k++;
+    else u++;
+  }));
+  document.getElementById('statB').textContent = `B: ${b}`;
+  document.getElementById('statK').textContent = `K: ${k}`;
+  document.getElementById('statU').textContent = `?: ${u}`;
+  document.getElementById('totalPatches').textContent =
+    `∑ B:${patches.boden.length} K:${patches.kein_boden.length}`;
+}
+
+function updateProgress() {
+  const total = labelImages.length;
+  const pct   = total ? ((labelIdx / total) * 100).toFixed(0) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('imgProgress').textContent =
+    `${labelIdx + 1} / ${total}`;
+}
+
+async function saveCurrent() {
+  const img = labelImages[labelIdx];
+  // Bild in offscreen-Canvas laden um Patches auszuschneiden
+  const bmp = await createImageBitmap(
+    await (await fetch(img.dataURL)).blob()
+  );
+  const oc = document.createElement('canvas');
+  oc.width  = bmp.width;
+  oc.height = bmp.height;
+  const octx = oc.getContext('2d');
+  octx.drawImage(bmp, 0, 0);
+
+  const cw = bmp.width  / GRID_COLS;
+  const ch = bmp.height / GRID_ROWS;
+  const base = img.name.replace(/\.[^.]+$/, '');
+
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const lbl = grid[r][c];
+      if (lbl === '?') continue;
+
+      const pc = document.createElement('canvas');
+      pc.width = pc.height = PATCH_SIZE;
+      pc.getContext('2d').drawImage(oc,
+        c * cw, r * ch, cw, ch,
+        0, 0, PATCH_SIZE, PATCH_SIZE
+      );
+
+      const blob = await new Promise(res => pc.toBlob(res, 'image/jpeg', 0.9));
+      const folder = lbl === 'B' ? 'boden' : 'kein_boden';
+      patches[folder].push({ name: `${base}_r${r}c${c}.jpg`, blob });
+    }
+  }
+
+  updateStats();
+  loadLabelImage(labelIdx + 1);
+}
+
+function skipCurrent() {
+  loadLabelImage(labelIdx + 1);
+}
+
+async function downloadPatches() {
+  const total = patches.boden.length + patches.kein_boden.length;
+  if (!total) { alert('Noch keine Patches gespeichert.'); return; }
+  const zip = new JSZip();
+  const pf  = zip.folder('patches');
+  const bf  = pf.folder('boden');
+  const kf  = pf.folder('kein_boden');
+  patches.boden.forEach(p => bf.file(p.name, p.blob));
+  patches.kein_boden.forEach(p => kf.file(p.name, p.blob));
+  const blob = await zip.generateAsync({ type: 'blob' });
+  triggerDownload(blob, 'patches.zip');
+}
+
+function finishedLabeling() {
+  document.getElementById('labelWrap').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">✅</div>
+      <div>Alle Bilder gelabelt!</div>
+      <div style="font-size:0.8rem; color:var(--muted);">
+        B: ${patches.boden.length} Patches &nbsp;|&nbsp; K: ${patches.kein_boden.length} Patches
+      </div>
+      <button id="uploadBtn" onclick="document.getElementById('fileInput').click()" style="margin-top:8px;">
+        WEITERE BILDER LADEN
+      </button>
+      <button onclick="downloadPatches()" style="padding:14px 24px; background:var(--warn); color:#000; border:none; border-radius:10px; font-family:'Space Mono',monospace; font-size:0.8rem; font-weight:700; cursor:pointer; margin-top:4px;">
+        ⬇ PATCHES HERUNTERLADEN
+      </button>
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// HILFSFUNKTIONEN
+// ════════════════════════════════════════════════════════════
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href    = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+window.addEventListener('resize', () => {
+  drawCamGrid();
+  if (labelImages.length) { resizeCanvas(); drawGrid(); }
+});
+
+// Start
+startCamera();
+</script>
+</body>
+</html>
