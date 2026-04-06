@@ -3,372 +3,192 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>PiCar MiDaS Tester</title>
+<title>PiCar Tester</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  background: #0a0a0a;
-  color: #e8e8e8;
-  font-family: 'SF Mono', 'Courier New', monospace;
+  background: #0a0a0a; color: #e8e8e8;
+  font-family: monospace;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  display: flex; flex-direction: column; overflow: hidden;
 }
-#camWrap {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-  background: #000;
-}
+#camWrap { position: relative; flex: 1; overflow: hidden; background: #111; }
 video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-canvas#overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
-
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #arrowPanel {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-.arrow-grid {
-  display: grid;
-  grid-template-columns: 80px 80px 80px;
-  grid-template-rows: 80px 80px 80px;
-  gap: 4px;
-}
-.arrow {
+  position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 12px;
-  font-size: 36px;
-  background: rgba(0,0,0,0.35);
-  border: 2px solid rgba(255,255,255,0.1);
-  transition: background 0.12s, border-color 0.12s, transform 0.12s;
-}
-.arrow.active {
-  background: rgba(0,220,120,0.85);
-  border-color: rgba(0,255,140,0.9);
-  transform: scale(1.12);
-}
-.arrow.empty { background: transparent; border-color: transparent; }
-
-#infoBar {
-  padding: 10px 16px;
-  background: #111;
-  border-top: 1px solid #222;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.stat {
-  display: flex; flex-direction: column; align-items: center;
-}
-.stat-label { font-size: 9px; color: #666; letter-spacing: 0.08em; text-transform: uppercase; }
-.stat-value { font-size: 15px; font-weight: 700; color: #e8e8e8; }
-.stat-value.green { color: #00dc78; }
-.stat-value.red   { color: #ff4d4d; }
-.stat-value.amber { color: #ffb020; }
-
-#startBtn {
-  margin-left: auto;
-  padding: 8px 18px;
-  background: #00dc78;
-  color: #000;
-  border: none;
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  letter-spacing: 0.05em;
-}
-#startBtn.running { background: #ff4d4d; color: #fff; }
-
-#statusMsg {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0,0,0,0.75);
-  color: #e8e8e8;
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-size: 13px;
-  text-align: center;
-  max-width: 80%;
   pointer-events: none;
 }
-
-.zone-bar {
-  position: absolute;
-  bottom: 0;
-  height: 4px;
-  opacity: 0.85;
-  transition: width 0.1s;
+.grid { display: grid; grid-template-columns: repeat(3, 70px); grid-template-rows: repeat(3, 70px); gap: 4px; }
+.btn {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; font-size: 28px; color: #fff;
+  background: rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.15);
+  transition: background .1s, transform .1s;
+}
+.btn.active { background: rgba(0,220,120,0.9); border-color: #00ff88; transform: scale(1.1); }
+.empty { background: transparent !important; border-color: transparent !important; }
+#bar {
+  padding: 10px 14px; background: #111; border-top: 1px solid #222;
+  display: flex; gap: 14px; align-items: center;
+}
+.s { display: flex; flex-direction: column; align-items: center; }
+.sl { font-size: 9px; color: #555; letter-spacing:.06em; }
+.sv { font-size: 14px; font-weight: 700; }
+#startBtn {
+  margin-left: auto; padding: 8px 18px;
+  background: #00dc78; color: #000;
+  border: none; border-radius: 8px;
+  font-family: monospace; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+#startBtn.on { background: #ff4d4d; color: #fff; }
+#msg {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(0,0,0,0.82); color: #e8e8e8;
+  padding: 12px 20px; border-radius: 8px; font-size: 13px; text-align: center;
+  max-width: 85%; line-height: 1.5;
 }
 </style>
 </head>
 <body>
-
 <div id="camWrap">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="overlay"></canvas>
+  <video id="v" autoplay playsinline muted></video>
+  <canvas id="c"></canvas>
   <div id="arrowPanel">
-    <div class="arrow-grid">
-      <div class="arrow empty"></div>
-      <div class="arrow" id="arr-fwd">↑</div>
-      <div class="arrow empty"></div>
-      <div class="arrow" id="arr-left">←</div>
-      <div class="arrow" id="arr-stop">■</div>
-      <div class="arrow" id="arr-right">→</div>
-      <div class="arrow empty"></div>
-      <div class="arrow" id="arr-bwd">↓</div>
-      <div class="arrow empty"></div>
+    <div class="grid">
+      <div class="empty btn"></div>
+      <div class="btn" id="aF">↑</div>
+      <div class="empty btn"></div>
+      <div class="btn" id="aL">←</div>
+      <div class="btn" id="aS">■</div>
+      <div class="btn" id="aR">→</div>
+      <div class="empty btn"></div>
+      <div class="btn" id="aB">↓</div>
+      <div class="empty btn"></div>
     </div>
   </div>
-  <div id="statusMsg"></div>
+  <div id="msg">Kamera-Zugriff erlauben,<br>dann START drücken</div>
 </div>
-
-<div id="infoBar">
-  <div class="stat">
-    <span class="stat-label">Links</span>
-    <span class="stat-value" id="val-left">—</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Mitte</span>
-    <span class="stat-value" id="val-mid">—</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Rechts</span>
-    <span class="stat-value" id="val-right">—</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">FPS</span>
-    <span class="stat-value green" id="val-fps">—</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Entscheid</span>
-    <span class="stat-value amber" id="val-action">—</span>
-  </div>
-  <button id="startBtn" onclick="toggleRunning()">START</button>
+<div id="bar">
+  <div class="s"><span class="sl">LINKS</span><span class="sv" id="vL">—</span></div>
+  <div class="s"><span class="sl">MITTE</span><span class="sv" id="vM">—</span></div>
+  <div class="s"><span class="sl">RECHTS</span><span class="sv" id="vR">—</span></div>
+  <div class="s"><span class="sl">FPS</span><span class="sv" id="vF" style="color:#00dc78">—</span></div>
+  <div class="s"><span class="sl">ENTSCHEID</span><span class="sv" id="vA" style="color:#ffb020">—</span></div>
+  <button id="startBtn" onclick="toggle()">START</button>
 </div>
 
 <script>
-const MIDAS_SIZE  = 256;
-const THRESHOLD   = 0.40;
-const EVAL_START  = 0.25;
-const LABELS      = { fwd:'VOR', left:'LINKS', right:'RECHTS', bwd:'RÜCK', stop:'STOP' };
-
-let model = null;
-let running = false;
-let animId  = null;
-let fps = 0, lastT = 0;
-let lastAction = 'stop';
-
-const video   = document.getElementById('video');
-const canvas  = document.getElementById('overlay');
-const ctx     = canvas.getContext('2d');
-const status  = document.getElementById('statusMsg');
-
-const arrows = {
-  fwd:   document.getElementById('arr-fwd'),
-  left:  document.getElementById('arr-left'),
-  right: document.getElementById('arr-right'),
-  bwd:   document.getElementById('arr-bwd'),
-  stop:  document.getElementById('arr-stop'),
+const SZ=128, THR=0.40, ES=0.30;
+const LAB={fwd:'VOR',left:'LINKS',right:'RECHTS',bwd:'RÜCK'};
+const vid=document.getElementById('v');
+const can=document.getElementById('c');
+const cx=can.getContext('2d');
+const msg=document.getElementById('msg');
+const AR={
+  fwd:  document.getElementById('aF'),
+  left: document.getElementById('aL'),
+  right:document.getElementById('aR'),
+  bwd:  document.getElementById('aB'),
+  stop: document.getElementById('aS')
 };
+let run=false, aid=null, fps=0, lt=0;
+const off=document.createElement('canvas');
+off.width=off.height=SZ;
+const ox=off.getContext('2d');
 
-async function loadModel() {
-  model = 'simple';
-  status.textContent = '';
-}
+navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false})
+  .then(s=>{ vid.srcObject=s; msg.textContent='Kamera bereit – START drücken'; })
+  .catch(e=>{ msg.textContent='Kamera-Fehler:\n'+e.message; });
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false
-    });
-    video.srcObject = stream;
-    await new Promise(r => {
-      if (video.readyState >= 2) { r(); return; }
-      video.addEventListener('canplay', r, { once: true });
-    });
-  } catch(e) {
-    status.textContent = 'Kamera nicht verfügbar: ' + e.message;
+function depth(data){
+  const res=new Float32Array(SZ*SZ);
+  for(let r=0;r<SZ;r++) for(let c=0;c<SZ;c++){
+    const i=(r*SZ+c)*4;
+    const R=data[i],G=data[i+1],B=data[i+2];
+    const br=(R+G+B)/(3*255);
+    const sat=(Math.max(R,G,B)-Math.min(R,G,B))/(Math.max(R,G,B)+1);
+    const rf=1-(r/SZ)*0.5;
+    res[r*SZ+c]=br*0.5+sat*0.2+rf*0.3;
   }
+  return res;
 }
 
-function estimateDepthSimple(imageData, w, h) {
-  const data = imageData.data;
-  const result = new Float32Array(MIDAS_SIZE * MIDAS_SIZE);
-  const scaleX = w / MIDAS_SIZE;
-  const scaleY = h / MIDAS_SIZE;
-
-  for (let r = 0; r < MIDAS_SIZE; r++) {
-    for (let c = 0; c < MIDAS_SIZE; c++) {
-      const sx = Math.floor(c * scaleX);
-      const sy = Math.floor(r * scaleY);
-      const idx = (sy * w + sx) * 4;
-      const R = data[idx], G = data[idx+1], B = data[idx+2];
-
-      const brightness = (R + G + B) / (3 * 255);
-      const saturation = (Math.max(R,G,B) - Math.min(R,G,B)) / (Math.max(R,G,B) + 1);
-      const rowFactor = 1.0 - (r / MIDAS_SIZE) * 0.5;
-
-      result[r * MIDAS_SIZE + c] = brightness * 0.5 + saturation * 0.2 + rowFactor * 0.3;
-    }
+function decide(d){
+  const r0=Math.floor(SZ*ES), t=Math.floor(SZ/3);
+  let sl=0,sm=0,sr=0,n=(SZ-r0)*t;
+  for(let r=r0;r<SZ;r++){
+    for(let c=0;c<t;c++)     sl+=d[r*SZ+c];
+    for(let c=t;c<2*t;c++)   sm+=d[r*SZ+c];
+    for(let c=2*t;c<SZ;c++)  sr+=d[r*SZ+c];
   }
-  return result;
+  sl/=n; sm/=n; sr/=n;
+  let a;
+  if(sm>THR)                  a='fwd';
+  else if(sl>=sr&&sl>THR-0.1) a='left';
+  else if(sr>sl&&sr>THR-0.1)  a='right';
+  else                        a='bwd';
+  return{a,sl,sm,sr};
 }
 
-function decide(depth) {
-  const rowStart = Math.floor(MIDAS_SIZE * EVAL_START);
-  const rows     = MIDAS_SIZE - rowStart;
-  const third    = Math.floor(MIDAS_SIZE / 3);
-
-  let sl = 0, sm = 0, sr = 0;
-  let n = rows * third;
-
-  for (let r = rowStart; r < MIDAS_SIZE; r++) {
-    for (let c = 0; c < third; c++)
-      sl += depth[r * MIDAS_SIZE + c];
-    for (let c = third; c < 2*third; c++)
-      sm += depth[r * MIDAS_SIZE + c];
-    for (let c = 2*third; c < MIDAS_SIZE; c++)
-      sr += depth[r * MIDAS_SIZE + c];
-  }
-  sl /= n; sm /= n; sr /= n;
-
-  let action;
-  if (sm > THRESHOLD)               action = 'fwd';
-  else if (sl >= sr && sl > THRESHOLD - 0.1) action = 'left';
-  else if (sr > sl  && sr > THRESHOLD - 0.1) action = 'right';
-  else                              action = 'bwd';
-
-  return { action, sl, sm, sr };
-}
-
-function drawOverlay(depth, sl, sm, sr, action) {
-  canvas.width  = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-
-  const third = Math.floor(W / 3);
-  const rowS  = Math.floor(H * EVAL_START);
-
-  const zoneScores = [sl, sm, sr];
-  const zoneColors = [
-    [255, 100, 60],
-    [60,  220, 120],
-    [60,  140, 255],
-  ];
-
-  zoneScores.forEach((score, i) => {
-    const x1 = i * third;
-    const alpha = Math.max(0.05, Math.min(0.35, score * 0.5));
-    const [r,g,b] = zoneColors[i];
-    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-    ctx.fillRect(x1, rowS, third, H - rowS);
-
-    ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x1, rowS, third, H - rowS);
-
-    ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
-    ctx.font = '700 13px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(score.toFixed(2), x1 + third/2, H - 10);
+function draw(sl,sm,sr){
+  can.width=can.offsetWidth||300;
+  can.height=can.offsetHeight||300;
+  const W=can.width, H=can.height;
+  cx.clearRect(0,0,W,H);
+  const t=Math.floor(W/3), rs=Math.floor(H*ES);
+  [[sl,[255,100,60]],[sm,[60,220,120]],[sr,[60,140,255]]].forEach(([s,[r,g,b]],i)=>{
+    cx.fillStyle=`rgba(${r},${g},${b},${Math.min(0.4,s*0.6)})`;
+    cx.fillRect(i*t,rs,t,H-rs);
+    cx.strokeStyle=`rgba(${r},${g},${b},0.5)`;
+    cx.lineWidth=1; cx.strokeRect(i*t,rs,t,H-rs);
+    cx.fillStyle=`rgba(${r},${g},${b},1)`;
+    cx.font='bold 13px monospace'; cx.textAlign='center';
+    cx.fillText((s*100).toFixed(0)+'%', i*t+t/2, H-10);
   });
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(0, rowS); ctx.lineTo(W, rowS);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  const fpsTxt = fps > 0 ? fps.toFixed(1) + ' fps' : '';
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(0, 0, 90, 22);
-  ctx.fillStyle = '#00dc78';
-  ctx.font = '11px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(fpsTxt, 6, 15);
+  cx.strokeStyle='rgba(255,255,255,0.2)'; cx.lineWidth=1;
+  cx.setLineDash([4,4]);
+  cx.beginPath(); cx.moveTo(0,rs); cx.lineTo(W,rs); cx.stroke();
+  cx.setLineDash([]);
 }
 
-function setArrow(action) {
-  Object.values(arrows).forEach(a => a.classList.remove('active'));
-  if (arrows[action]) arrows[action].classList.add('active');
-  lastAction = action;
-}
-
-function updateStats(sl, sm, sr, action) {
-  const fmt = v => (v * 100).toFixed(0) + '%';
-  document.getElementById('val-left').textContent  = fmt(sl);
-  document.getElementById('val-mid').textContent   = fmt(sm);
-  document.getElementById('val-right').textContent = fmt(sr);
-  document.getElementById('val-fps').textContent   = fps.toFixed(1);
-  document.getElementById('val-action').textContent = LABELS[action] || action;
-}
-
-const offscreen = document.createElement('canvas');
-offscreen.width = offscreen.height = MIDAS_SIZE;
-const offCtx = offscreen.getContext('2d');
-
-async function loop() {
-  if (!running) return;
-
-  const now = performance.now();
-  if (lastT > 0) {
-    fps = fps * 0.85 + (1000 / (now - lastT)) * 0.15;
+function frame(){
+  if(!run) return;
+  const now=performance.now();
+  if(lt>0) fps=fps*.85+(1000/(now-lt))*.15;
+  lt=now;
+  if(vid.readyState>=2){
+    ox.drawImage(vid,0,0,SZ,SZ);
+    const id=ox.getImageData(0,0,SZ,SZ);
+    const d=depth(id.data);
+    const{a,sl,sm,sr}=decide(d);
+    draw(sl,sm,sr);
+    Object.values(AR).forEach(x=>x.classList.remove('active'));
+    if(AR[a]) AR[a].classList.add('active');
+    document.getElementById('vL').textContent=(sl*100).toFixed(0)+'%';
+    document.getElementById('vM').textContent=(sm*100).toFixed(0)+'%';
+    document.getElementById('vR').textContent=(sr*100).toFixed(0)+'%';
+    document.getElementById('vF').textContent=fps.toFixed(1);
+    document.getElementById('vA').textContent=LAB[a]||a;
   }
-  lastT = now;
-
-  offCtx.drawImage(video, 0, 0, MIDAS_SIZE, MIDAS_SIZE);
-  const imgData = offCtx.getImageData(0, 0, MIDAS_SIZE, MIDAS_SIZE);
-
-  const depth = estimateDepthSimple(imgData.data, MIDAS_SIZE, MIDAS_SIZE);
-  const { action, sl, sm, sr } = decide(depth);
-
-  drawOverlay(depth, sl, sm, sr, action);
-  setArrow(action);
-  updateStats(sl, sm, sr, action);
-
-  animId = requestAnimationFrame(loop);
+  aid=requestAnimationFrame(frame);
 }
 
-async function toggleRunning() {
-  const btn = document.getElementById('startBtn');
-  if (!running) {
-    running = true;
-    btn.textContent = 'STOP';
-    btn.classList.add('running');
-    loop();
+function toggle(){
+  const b=document.getElementById('startBtn');
+  run=!run;
+  if(run){
+    b.textContent='STOP'; b.classList.add('on');
+    msg.textContent=''; lt=0; frame();
   } else {
-    running = false;
-    btn.textContent = 'START';
-    btn.classList.remove('running');
-    cancelAnimationFrame(animId);
-    Object.values(arrows).forEach(a => a.classList.remove('active'));
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    b.textContent='START'; b.classList.remove('on');
+    cancelAnimationFrame(aid);
+    Object.values(AR).forEach(x=>x.classList.remove('active'));
+    cx.clearRect(0,0,can.width,can.height);
+    msg.textContent='Gestoppt';
   }
 }
-
-window.addEventListener('resize', () => {
-  canvas.width  = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-});
-
-(async () => {
-  await startCamera();
-  await loadModel();
-  status.textContent = '';
-})();
 </script>
 </body>
 </html>
