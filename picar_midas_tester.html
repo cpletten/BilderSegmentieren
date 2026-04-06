@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>PiCar MiDaS Tester</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -129,7 +128,7 @@ canvas#overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
       <div class="arrow empty"></div>
     </div>
   </div>
-  <div id="statusMsg">Modell wird geladen…</div>
+  <div id="statusMsg"></div>
 </div>
 
 <div id="infoBar">
@@ -182,19 +181,7 @@ const arrows = {
 };
 
 async function loadModel() {
-  status.textContent = 'Lade MiDaS TFLite via TF.js…';
-  try {
-    model = await tf.loadGraphModel(
-      'https://cdn.jsdelivr.net/npm/@tensorflow-models/depth-estimation@0.0.3/dist/',
-      { fromTFHub: false }
-    );
-  } catch(e) {}
-
-  if (!model) {
-    status.textContent = 'Nutze vereinfachtes Tiefenmodell (kein MiDaS verfügbar im Browser)…';
-    await new Promise(r => setTimeout(r, 800));
-    model = 'simple';
-  }
+  model = 'simple';
   status.textContent = '';
 }
 
@@ -205,7 +192,10 @@ async function startCamera() {
       audio: false
     });
     video.srcObject = stream;
-    await new Promise(r => video.onloadedmetadata = r);
+    await new Promise(r => {
+      if (video.readyState >= 2) { r(); return; }
+      video.addEventListener('canplay', r, { once: true });
+    });
   } catch(e) {
     status.textContent = 'Kamera nicht verfügbar: ' + e.message;
   }
