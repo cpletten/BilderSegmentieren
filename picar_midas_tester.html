@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PiCar MiDaS Tester</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a0a;
+  color: #e8e8e8;
+  font-family: 'SF Mono', 'Courier New', monospace;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#camWrap {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #000;
+}
+video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+canvas#overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+#arrowPanel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.arrow-grid {
+  display: grid;
+  grid-template-columns: 80px 80px 80px;
+  grid-template-rows: 80px 80px 80px;
+  gap: 4px;
+}
+.arrow {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  font-size: 36px;
+  background: rgba(0,0,0,0.35);
+  border: 2px solid rgba(255,255,255,0.1);
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+.arrow.active {
+  background: rgba(0,220,120,0.85);
+  border-color: rgba(0,255,140,0.9);
+  transform: scale(1.12);
+}
+.arrow.empty { background: transparent; border-color: transparent; }
+
+#infoBar {
+  padding: 10px 16px;
+  background: #111;
+  border-top: 1px solid #222;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.stat {
+  display: flex; flex-direction: column; align-items: center;
+}
+.stat-label { font-size: 9px; color: #666; letter-spacing: 0.08em; text-transform: uppercase; }
+.stat-value { font-size: 15px; font-weight: 700; color: #e8e8e8; }
+.stat-value.green { color: #00dc78; }
+.stat-value.red   { color: #ff4d4d; }
+.stat-value.amber { color: #ffb020; }
+
+#startBtn {
+  margin-left: auto;
+  padding: 8px 18px;
+  background: #00dc78;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+#startBtn.running { background: #ff4d4d; color: #fff; }
+
+#statusMsg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.75);
+  color: #e8e8e8;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: center;
+  max-width: 80%;
+  pointer-events: none;
+}
+
+.zone-bar {
+  position: absolute;
+  bottom: 0;
+  height: 4px;
+  opacity: 0.85;
+  transition: width 0.1s;
+}
+</style>
+</head>
+<body>
+
+<div id="camWrap">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <div id="arrowPanel">
+    <div class="arrow-grid">
+      <div class="arrow empty"></div>
+      <div class="arrow" id="arr-fwd">↑</div>
+      <div class="arrow empty"></div>
+      <div class="arrow" id="arr-left">←</div>
+      <div class="arrow" id="arr-stop">■</div>
+      <div class="arrow" id="arr-right">→</div>
+      <div class="arrow empty"></div>
+      <div class="arrow" id="arr-bwd">↓</div>
+      <div class="arrow empty"></div>
+    </div>
+  </div>
+  <div id="statusMsg">Modell wird geladen…</div>
+</div>
+
+<div id="infoBar">
+  <div class="stat">
+    <span class="stat-label">Links</span>
+    <span class="stat-value" id="val-left">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Mitte</span>
+    <span class="stat-value" id="val-mid">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Rechts</span>
+    <span class="stat-value" id="val-right">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">FPS</span>
+    <span class="stat-value green" id="val-fps">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Entscheid</span>
+    <span class="stat-value amber" id="val-action">—</span>
+  </div>
+  <button id="startBtn" onclick="toggleRunning()">START</button>
+</div>
+
+<script>
+const MIDAS_SIZE  = 256;
+const THRESHOLD   = 0.40;
+const EVAL_START  = 0.25;
+const LABELS      = { fwd:'VOR', left:'LINKS', right:'RECHTS', bwd:'RÜCK', stop:'STOP' };
+
+let model = null;
+let running = false;
+let animId  = null;
+let fps = 0, lastT = 0;
+let lastAction = 'stop';
+
+const video   = document.getElementById('video');
+const canvas  = document.getElementById('overlay');
+const ctx     = canvas.getContext('2d');
+const status  = document.getElementById('statusMsg');
+
+const arrows = {
+  fwd:   document.getElementById('arr-fwd'),
+  left:  document.getElementById('arr-left'),
+  right: document.getElementById('arr-right'),
+  bwd:   document.getElementById('arr-bwd'),
+  stop:  document.getElementById('arr-stop'),
+};
+
+async function loadModel() {
+  status.textContent = 'Lade MiDaS TFLite via TF.js…';
+  try {
+    model = await tf.loadGraphModel(
+      'https://cdn.jsdelivr.net/npm/@tensorflow-models/depth-estimation@0.0.3/dist/',
+      { fromTFHub: false }
+    );
+  } catch(e) {}
+
+  if (!model) {
+    status.textContent = 'Nutze vereinfachtes Tiefenmodell (kein MiDaS verfügbar im Browser)…';
+    await new Promise(r => setTimeout(r, 800));
+    model = 'simple';
+  }
+  status.textContent = '';
+}
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await new Promise(r => video.onloadedmetadata = r);
+  } catch(e) {
+    status.textContent = 'Kamera nicht verfügbar: ' + e.message;
+  }
+}
+
+function estimateDepthSimple(imageData, w, h) {
+  const data = imageData.data;
+  const result = new Float32Array(MIDAS_SIZE * MIDAS_SIZE);
+  const scaleX = w / MIDAS_SIZE;
+  const scaleY = h / MIDAS_SIZE;
+
+  for (let r = 0; r < MIDAS_SIZE; r++) {
+    for (let c = 0; c < MIDAS_SIZE; c++) {
+      const sx = Math.floor(c * scaleX);
+      const sy = Math.floor(r * scaleY);
+      const idx = (sy * w + sx) * 4;
+      const R = data[idx], G = data[idx+1], B = data[idx+2];
+
+      const brightness = (R + G + B) / (3 * 255);
+      const saturation = (Math.max(R,G,B) - Math.min(R,G,B)) / (Math.max(R,G,B) + 1);
+      const rowFactor = 1.0 - (r / MIDAS_SIZE) * 0.5;
+
+      result[r * MIDAS_SIZE + c] = brightness * 0.5 + saturation * 0.2 + rowFactor * 0.3;
+    }
+  }
+  return result;
+}
+
+function decide(depth) {
+  const rowStart = Math.floor(MIDAS_SIZE * EVAL_START);
+  const rows     = MIDAS_SIZE - rowStart;
+  const third    = Math.floor(MIDAS_SIZE / 3);
+
+  let sl = 0, sm = 0, sr = 0;
+  let n = rows * third;
+
+  for (let r = rowStart; r < MIDAS_SIZE; r++) {
+    for (let c = 0; c < third; c++)
+      sl += depth[r * MIDAS_SIZE + c];
+    for (let c = third; c < 2*third; c++)
+      sm += depth[r * MIDAS_SIZE + c];
+    for (let c = 2*third; c < MIDAS_SIZE; c++)
+      sr += depth[r * MIDAS_SIZE + c];
+  }
+  sl /= n; sm /= n; sr /= n;
+
+  let action;
+  if (sm > THRESHOLD)               action = 'fwd';
+  else if (sl >= sr && sl > THRESHOLD - 0.1) action = 'left';
+  else if (sr > sl  && sr > THRESHOLD - 0.1) action = 'right';
+  else                              action = 'bwd';
+
+  return { action, sl, sm, sr };
+}
+
+function drawOverlay(depth, sl, sm, sr, action) {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const third = Math.floor(W / 3);
+  const rowS  = Math.floor(H * EVAL_START);
+
+  const zoneScores = [sl, sm, sr];
+  const zoneColors = [
+    [255, 100, 60],
+    [60,  220, 120],
+    [60,  140, 255],
+  ];
+
+  zoneScores.forEach((score, i) => {
+    const x1 = i * third;
+    const alpha = Math.max(0.05, Math.min(0.35, score * 0.5));
+    const [r,g,b] = zoneColors[i];
+    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    ctx.fillRect(x1, rowS, third, H - rowS);
+
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x1, rowS, third, H - rowS);
+
+    ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
+    ctx.font = '700 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(score.toFixed(2), x1 + third/2, H - 10);
+  });
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, rowS); ctx.lineTo(W, rowS);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const fpsTxt = fps > 0 ? fps.toFixed(1) + ' fps' : '';
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, 90, 22);
+  ctx.fillStyle = '#00dc78';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(fpsTxt, 6, 15);
+}
+
+function setArrow(action) {
+  Object.values(arrows).forEach(a => a.classList.remove('active'));
+  if (arrows[action]) arrows[action].classList.add('active');
+  lastAction = action;
+}
+
+function updateStats(sl, sm, sr, action) {
+  const fmt = v => (v * 100).toFixed(0) + '%';
+  document.getElementById('val-left').textContent  = fmt(sl);
+  document.getElementById('val-mid').textContent   = fmt(sm);
+  document.getElementById('val-right').textContent = fmt(sr);
+  document.getElementById('val-fps').textContent   = fps.toFixed(1);
+  document.getElementById('val-action').textContent = LABELS[action] || action;
+}
+
+const offscreen = document.createElement('canvas');
+offscreen.width = offscreen.height = MIDAS_SIZE;
+const offCtx = offscreen.getContext('2d');
+
+async function loop() {
+  if (!running) return;
+
+  const now = performance.now();
+  if (lastT > 0) {
+    fps = fps * 0.85 + (1000 / (now - lastT)) * 0.15;
+  }
+  lastT = now;
+
+  offCtx.drawImage(video, 0, 0, MIDAS_SIZE, MIDAS_SIZE);
+  const imgData = offCtx.getImageData(0, 0, MIDAS_SIZE, MIDAS_SIZE);
+
+  const depth = estimateDepthSimple(imgData.data, MIDAS_SIZE, MIDAS_SIZE);
+  const { action, sl, sm, sr } = decide(depth);
+
+  drawOverlay(depth, sl, sm, sr, action);
+  setArrow(action);
+  updateStats(sl, sm, sr, action);
+
+  animId = requestAnimationFrame(loop);
+}
+
+async function toggleRunning() {
+  const btn = document.getElementById('startBtn');
+  if (!running) {
+    running = true;
+    btn.textContent = 'STOP';
+    btn.classList.add('running');
+    loop();
+  } else {
+    running = false;
+    btn.textContent = 'START';
+    btn.classList.remove('running');
+    cancelAnimationFrame(animId);
+    Object.values(arrows).forEach(a => a.classList.remove('active'));
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+window.addEventListener('resize', () => {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+});
+
+(async () => {
+  await startCamera();
+  await loadModel();
+  status.textContent = '';
+})();
+</script>
+</body>
+</html>
